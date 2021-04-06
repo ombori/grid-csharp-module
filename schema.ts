@@ -1,7 +1,9 @@
 export type Settings = {
   /**
-   * @title Test value 
-   * @default 'hello world'
+   * @title A test setting
+   * @default "Default value"
    */
-  test_value: string;
+  test_setting: string;
+
+  // TODO: add your settings here
 }
