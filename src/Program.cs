@@ -17,14 +17,22 @@ namespace BrokerQuickStart
   {
     static void Main(string[] args)
     {
-      var module = new GridOS.Module();
-      module.Connect();
+      var instance = new Program();
+      instance.Work().Wait();
 
       // Wait until the app unloads or is cancelled
       var cts = new CancellationTokenSource();
       AssemblyLoadContext.Default.Unloading += (ctx) => cts.Cancel();
       Console.CancelKeyPress += (sender, cpe) => cts.Cancel();
       WhenCancelled(cts.Token).Wait();
+    }
+
+    async private Task Work() {
+      var module = new GridOS.Module();
+      module.Connect();
+
+      var twin = await module.GetTwin();
+      Console.WriteLine(twin);
     }
 
     // Handles cleanup operations when app is cancelled or unloads
