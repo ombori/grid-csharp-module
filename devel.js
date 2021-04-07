@@ -29,7 +29,7 @@ cp.execSync(`yarn build ${name}@${id}.${serial}`, { stdio: 'inherit' });
 cp.execSync(`docker push ${img}`, { stdio: 'inherit' });
 
 // update device configutation
-config.modulesContent.$edgeAgent['properties.desired'].modules[moduleName].settings.image = 'bebebe';
+config.modulesContent.$edgeAgent['properties.desired'].modules[moduleName].settings.image = img;
 
 const reg = IoT.Registry.fromConnectionString(data.IOTHUB_CONNECTION_STRING);
 await reg.applyConfigurationContentOnDevice(data.DEVICE_ID, config);
