@@ -35,7 +35,7 @@ namespace GridOS
       public byte[] digest { get; set; }
     }
 
-    private string Sign(string data, CancellationToken token = default)
+    private string Sign(byte[] data, CancellationToken token = default)
     {
       var genId = UrlEncoder.Default.Encode(Environment.GetEnvironmentVariable("IOTEDGE_MODULEGENERATIONID"));
       var apiVer = UrlEncoder.Default.Encode(Environment.GetEnvironmentVariable("IOTEDGE_APIVERSION"));
@@ -44,7 +44,7 @@ namespace GridOS
       string module = UrlEncoder.Default.Encode(ModuleId);
       var host = workload.Split('/').Last();
 
-      var reqData = new SignRequest() {algo = "HMACSHA256", keyId = "primary", data = data};
+      var reqData = new SignRequest() {algo = "HMACSHA256", keyId = "primary", data = System.Convert.ToBase64String(data)};
       var payload = JsonSerializer.Serialize(reqData);
       var req = 
         $"POST http://{host}/modules/{module}/genid/{genId}/sign?api-version={apiVer} HTTP/1.1\r\n" +
@@ -63,28 +63,25 @@ namespace GridOS
       sock.Close();
 
       var lines = Encoding.ASCII.GetString(buf).Trim().Split("\n");
-      Console.WriteLine(req);
-      Console.WriteLine(Encoding.ASCII.GetString(buf));
-      Console.WriteLine(lines.First());
-      Console.WriteLine(lines.Last());
+      var first = lines.First().Trim();
+      var last = lines.Last().Trim('\0');
 
-      if(lines.First().Trim() != "HTTP/1.1 200 OK") throw new Exception("Cannot sign");
+      if(first != "HTTP/1.1 200 OK") throw new Exception("Cannot sign");
 
-      var res = JsonSerializer.Deserialize<SignResponse>(Encoding.ASCII.GetBytes(lines.Last().Trim('\0')));
-
+      var res = JsonSerializer.Deserialize<SignResponse>(Encoding.ASCII.GetBytes(last));
       return Convert.ToBase64String(res.digest);
     }
 
     public string GetModuleToken(int expiryInSeconds = 3600)
     { 
-      TimeSpan fromEpochStart = DateTime.UtcNow - new DateTime(1970, 1, 1);
-      string expiry = Convert.ToString((int)fromEpochStart.TotalSeconds + expiryInSeconds);
-      string resourceUri = $"{IotHubHostName}/devices/{DeviceId}/modules/{ModuleId}";
-      string stringToSign = "gridadminhubazuredevices.net"; // WebUtility.UrlEncode(resourceUri) + "\n" + expiry;
+      var expiry = DateTimeOffset.Now.ToUnixTimeSeconds() + expiryInSeconds;
+      var resourceUri = $"{IotHubHostName}/devices/{DeviceId}/modules/{ModuleId}";
+      var stringToSign = WebUtility.UrlEncode(resourceUri) + "\n" + expiry;
+      var asBytes = Encoding.UTF8.GetBytes(stringToSign);
 
-      var signature = this.Sign(stringToSign);
+      var signature = this.Sign(asBytes);
       string token = String.Format(CultureInfo.InvariantCulture, "SharedAccessSignature sr={0}&sig={1}&se={2}", 
-          WebUtility.UrlEncode(resourceUri), WebUtility.UrlEncode(signature), expiry);          
+          WebUtility.UrlEncode(resourceUri), WebUtility.UrlEncode(signature), expiry.ToString());          
       return token;
     }
 
