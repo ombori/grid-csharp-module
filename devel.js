@@ -27,7 +27,7 @@ const id = Math.floor(Math.random() * 10000000);
 const oldVersions = [];
 
 console.log('Reading device configuration');
-const config = JSON.parse(cp.execSync(`omg app dev twin ${data.DEVICE_NAME}`).toString());
+const config = JSON.parse(cp.execSync(`omg dev twin ${data.DEVICE_NAME}`).toString());
 
 let isDirty = false;
 fs.watch('.', { recursive: true }, (op, file) => {

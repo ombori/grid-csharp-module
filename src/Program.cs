@@ -27,7 +27,7 @@ namespace GridCSharpModule
 
     async private Task Work() {
       var module = new GridOS.Module();
-      module.Connect();
+      await module.Connect();
 
       // Example of receiving a setting value
       var testSetting = module.GetSetting("test_setting");
@@ -37,7 +37,7 @@ namespace GridCSharpModule
       var twin = await module.GetTwin();
       Console.WriteLine($"received twin {twin}");
 
-      // Example of an RPC method
+      // Example of a module method
       module.OnMethod<string>("hello", (object args) => {
         Console.WriteLine($"Hello method called {args}");
         return "okay";
@@ -45,7 +45,7 @@ namespace GridCSharpModule
 
       // Example of receiving a message
       module.OnEvent("Test.Event", (object data, string type) => {
-        Console.WriteLine($"Event received {data}");
+        Console.WriteLine($"Event received {type}: {data}");
       });
 
       // Example of broadcasting a message 
