@@ -29,6 +29,10 @@ namespace GridCSharpModule
       var module = new GridOS.Module();
       module.Connect();
 
+      // Example of receiving a setting value
+      var testSetting = module.GetSetting("test_setting");
+      Console.WriteLine($"test_setting value {testSetting}");
+
       // Example of receiving a twin
       var twin = await module.GetTwin();
       Console.WriteLine($"received twin {twin}");

@@ -1,35 +1,16 @@
 namespace GridOS
 {
-  // TODO: add onMethod
-  // TODO: add onEvent
-  // TODO: add broadcasts
-  // TODO: add generic publish/subscribe methods
   // TODO: add emit
   // TODO: add settings
 
   using System;
-  using System.Collections.Generic;
-  using System.IO;
-  using System.Net.Security;    
-  using System.Security.Cryptography.X509Certificates;
   using System.Text;
   using uPLibrary.Networking.M2Mqtt;
   using uPLibrary.Networking.M2Mqtt.Messages;
 
-  using System.Runtime.Loader;
-  using System.Threading;
   using System.Threading.Tasks;
   using System.Text.Json;
 
-  //"$iothub/<deviceid>/<moduleid>/messages/events" -  "iothub telemetry"
-  //"$iothub/<deviceid>/<moduleid>/messages/c2d/post" -  "iothub c2d messages"
-  //"$iothub/<deviceid>/<moduleid>/twin/desired" -  "iothub update desired properties"
-  //"$iothub/<deviceid>/<moduleid>/twin/reported" -  "iothub update reported properties"
-  //"$iothub/<deviceid>/<moduleid>/twin/get" -  "iothub device twin request"
-  //"$iothub/<deviceid>/<moduleid>/twin/res/<status>" -  "iothub device twin response"
-  //"$iothub/<deviceid>/<moduleid>/methods/post" -  "iothub device DM request"
-  //"$iothub/<deviceid>/<moduleid>/methods/res/<status>" -  "iothub device DM response"
-  
   class Module {
     public MqttClient client = null;
     private int rid = 1000;
@@ -60,12 +41,6 @@ namespace GridOS
 
       Console.WriteLine("IoT client connected");
 
-      // client.MqttMsgPublishReceived += Client_OnMessage;
-
-      // client.Subscribe(
-      //     new[] { $"$iothub/{DeviceId}/{ModuleId}/+" },
-      //     new[] { (byte)1 });
-
       // To receive the result of a Twin-Get or a Twin-Patch, a client needs to subscribe
       // to the following topic:
       client.Subscribe(
@@ -81,6 +56,10 @@ namespace GridOS
       client.Subscribe(
         new[] {"ombori/grid/message/#" },
         new[] { (byte)1 });
+    }
+
+    public string GetSetting(string name) {
+      return System.Environment.GetEnvironmentVariable($"{ModuleId}_{name}".ToUpper());
     }
 
     public Task<object> GetTwin() {
