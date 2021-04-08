@@ -37,8 +37,6 @@ namespace GridOS
     private string DeviceId = null;
     private string ModuleId = null;
 
-    private Dictionary<string, MqttClient.MqttMsgPublishEventHandler> handlers;
-
     public void Connect()
     {
       string hostname = System.Environment.GetEnvironmentVariable("IOTEDGE_GATEWAYHOSTNAME");
@@ -62,7 +60,7 @@ namespace GridOS
 
       Console.WriteLine("IoT client connected");
 
-      client.MqttMsgPublishReceived += Client_OnMessage;
+      // client.MqttMsgPublishReceived += Client_OnMessage;
 
       // client.Subscribe(
       //     new[] { $"$iothub/{DeviceId}/{ModuleId}/+" },
@@ -71,19 +69,18 @@ namespace GridOS
       // To receive the result of a Twin-Get or a Twin-Patch, a client needs to subscribe
       // to the following topic:
       client.Subscribe(
-          new[] { "$iothub/twin/res/#" },
-          new[] { (byte)1 });
+        new[] { "$iothub/twin/res/#" },
+        new[] { (byte)1 });
 
       // To receive Direct Method Calls, a client needs to subscribe to the following topic:
       client.Subscribe(
-          new[] { $"$iothub/methods/POST/#" },
-          new[] { (byte)1 });      
+        new[] { "$iothub/methods/POST/#" },
+        new[] { (byte)1 });   
 
-      // // twin results and updates
-      // client.Subscribe(
-      //   new[] { $"$iothub/{DeviceId}/{ModuleId}/twin/res/#" }, 
-      //   new[] {(byte)1}
-      // );
+      // Grid local bradcasts
+      client.Subscribe(
+        new[] {"ombori/grid/message/#" },
+        new[] { (byte)1 });
     }
 
     public Task<object> GetTwin() {
@@ -138,7 +135,7 @@ namespace GridOS
       };
     }
 
-    public void OnMethod<R>(string name, Func<object, R> callback) {
+    public void OnMethod<R>(string name, Func<object, R> handler) {
       var filter = $"$iothub/methods/POST/{name}/?";
       client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
         var topic = e.Topic;
@@ -148,7 +145,7 @@ namespace GridOS
 
         try {
           var args = JsonSerializer.Deserialize<object>(e.Message);
-          R result = callback(args);
+          R result = handler(args);
           var json = JsonSerializer.Serialize(result);
           client.Publish($"$iothub/methods/res/200/?$rid={rid}", Encoding.UTF8.GetBytes(json));
         } catch (Exception error) {
@@ -157,16 +154,35 @@ namespace GridOS
       };
     }
 
-    private string CustomMethod(string name, string value) {
-      Console.WriteLine($"Method ${name}: ${value}");
-      return "okay";
+    public void OnEvent(string type, Action<object, string> handler) {
+      var filter = $"ombori/grid/message/{type}";
+      client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
+        var topic = e.Topic;
+        if (topic != filter) return;
+
+        var args = JsonSerializer.Deserialize<object>(e.Message);
+        handler(args, type);
+      };
     }
 
-    private void Client_OnMessage(object sender, MqttMsgPublishEventArgs e)
-    {
-      var topic = e.Topic;
-      var message = Encoding.UTF8.GetString(e.Message);
-      Console.WriteLine($"Received:\n\t{topic}\n\t{message}");
+    public void Broadcast(string type, object payload) {
+      var json = JsonSerializer.Serialize(payload);
+      client.Publish($"ombori/grid/message/{type}", Encoding.UTF8.GetBytes(json));
+    }
+
+    public void Publish(string topic, byte[] payload) {
+      client.Publish(topic, payload);
+    }
+
+    public void Subscribe(string topic, Action<byte[], string> handler) {
+      client.Subscribe(
+        new[] { topic },
+        new[] { (byte)1 });
+
+      client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
+        if (e.Topic != topic) return;
+        handler(e.Message, topic);
+      };
     }
   }
 }
