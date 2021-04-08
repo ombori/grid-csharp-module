@@ -5,8 +5,6 @@ namespace BrokerQuickStart
   using System.Net.Security;    
   using System.Security.Cryptography.X509Certificates;
   using System.Text;
-  using uPLibrary.Networking.M2Mqtt;
-  using uPLibrary.Networking.M2Mqtt.Messages;
 
   using System.Runtime.Loader;
   using System.Threading;
@@ -32,7 +30,12 @@ namespace BrokerQuickStart
       module.Connect();
 
       var twin = await module.GetTwin();
-      Console.WriteLine(twin);
+      Console.WriteLine($"received twin {twin}");
+
+      module.OnMethod<string>("hello", (object args) => {
+        Console.WriteLine($"Hello method called {args}");
+        return "okay";
+      });
     }
 
     // Handles cleanup operations when app is cancelled or unloads

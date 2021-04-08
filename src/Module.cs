@@ -1,5 +1,12 @@
 namespace GridOS
 {
+  // TODO: add onMethod
+  // TODO: add onEvent
+  // TODO: add broadcasts
+  // TODO: add generic publish/subscribe methods
+  // TODO: add emit
+  // TODO: add settings
+
   using System;
   using System.Collections.Generic;
   using System.IO;
@@ -38,11 +45,11 @@ namespace GridOS
       DeviceId = System.Environment.GetEnvironmentVariable("IOTEDGE_DEVICEID");
       ModuleId = System.Environment.GetEnvironmentVariable("IOTEDGE_MODULEID");
       string HubName = System.Environment.GetEnvironmentVariable("IOTEDGE_IOTHUBHOSTNAME");
-      string SasToken = "SharedAccessSignature sr=grid-admin-hub.azure-devices.net%2Fdevices%2Fb6ab4904-7a33-49ad-be4e-9cdecaad1530%2Fmodules%2Fgrid-csharp-module&sig=h%2Bai4%2B334V3Sn2bONy56NJkaMSWnTMr9fXJdgoWK9q0%3D&se=1617837820";
+      string SasToken = "SharedAccessSignature sr=grid-admin-hub.azure-devices.net%2Fdevices%2Fb6ab4904-7a33-49ad-be4e-9cdecaad1530%2Fmodules%2Fgrid-csharp-module&sig=gSFKqAalWF3qRkY8G9LL7QZAPj2enNlV5R4JOZ6vADI%3D&se=1617899054";
 
       client = new MqttClient(hostname);
       client.ProtocolVersion = MqttProtocolVersion.Version_3_1_1;
-      
+    
       var result = client.Connect(
                         $"{DeviceId}/{ModuleId}",
                         $"{HubName}/{DeviceId}/{ModuleId}/?api-version=2018-06-30",
@@ -57,10 +64,9 @@ namespace GridOS
 
       client.MqttMsgPublishReceived += Client_OnMessage;
 
-
-      client.Subscribe(
-          new[] { "#" },
-          new[] { (byte)1 });
+      // client.Subscribe(
+      //     new[] { $"$iothub/{DeviceId}/{ModuleId}/+" },
+      //     new[] { (byte)1 });
 
       // To receive the result of a Twin-Get or a Twin-Patch, a client needs to subscribe
       // to the following topic:
@@ -70,58 +76,85 @@ namespace GridOS
 
       // To receive Direct Method Calls, a client needs to subscribe to the following topic:
       client.Subscribe(
-          new[] { $"$iothub/{DeviceId}/{ModuleId}methods/POST/#" },
+          new[] { $"$iothub/methods/POST/#" },
           new[] { (byte)1 });      
 
-      // twin results and updates
-      client.Subscribe(
-        new[] { $"$iothub/{DeviceId}/{ModuleId}/twin/res/#" }, 
-        new[] {(byte)1}
-      );
+      // // twin results and updates
+      // client.Subscribe(
+      //   new[] { $"$iothub/{DeviceId}/{ModuleId}/twin/res/#" }, 
+      //   new[] {(byte)1}
+      // );
     }
 
-    public Task<string> GetTwin() {
-      Console.WriteLine("GetTwin");
+    public Task<object> GetTwin() {
       if (client == null) throw new Exception("Client not initialized");
 
       var id = rid.ToString();
       rid+=1;
-      
 
-      Console.WriteLine($"rid={id}");
-      var result = new TaskCompletionSource<string>();
-      var filter = $"$iothub/{DeviceId}/{ModuleId}/twin/res/";
-
-      // here is your global onMessage handler i guess
+      var result = new TaskCompletionSource<object>();
+      var filter = $"$iothub/twin/res/";
 
       client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
-
-        Console.WriteLine($"<{e.Topic}");
-
         var topic = e.Topic;
         if (!topic.StartsWith(filter)) return;
 
-        var messageId = topic.Split("=")[2];
+        var messageId = topic.Split("=")[1];
         if (messageId != id) return;
-      
-        var message = Encoding.UTF8.GetString(e.Message);
 
-        Console.WriteLine($"done");
-        result.SetResult(message);
+        var code = topic.Split("/")[3];
+        if (code != "200") throw new Exception($"Cannot fetch twin, code={code}");
+
+        result.SetResult(JsonSerializer.Deserialize<object>(e.Message));
 
         // TODO: remove handler
         // client.MqttMsgPublishReceived -= eventHandler;
         return;
       };
 
-      // Request a twin
-
-      Console.WriteLine($">$iothub/{DeviceId}/{ModuleId}/twin/GET/?$rid={id}");
       client.Publish(
-        $"$iothub/{DeviceId}/{ModuleId}/twin/GET/?$rid={id}",
+        $"$iothub/twin/GET/?$rid={id}",
         new[] { (byte)1 });
 
       return result.Task;
+    }
+    
+    public void OnMethod<R>(string name, Func<object, Task<R>> callback) {
+      var filter = $"$iothub/methods/POST/{name}/?";
+      client.MqttMsgPublishReceived += async (object sender, MqttMsgPublishEventArgs e) => {
+        var topic = e.Topic;
+        if (!topic.StartsWith(filter)) return;
+
+        var rid = topic.Split("=")[1];
+
+        try {
+          var args = JsonSerializer.Deserialize<object>(e.Message);
+          R result = await callback(args);
+          var json = JsonSerializer.Serialize(result);
+          client.Publish($"$iothub/methods/res/200/?$rid={rid}", Encoding.UTF8.GetBytes(json));
+        } catch (Exception error) {
+          client.Publish($"$iothub/methods/res/500/?$rid={rid}", Encoding.UTF8.GetBytes(error.Message));
+        }
+      };
+    }
+
+    public void OnMethod<R>(string name, Func<object, R> callback) {
+      var filter = $"$iothub/methods/POST/{name}/?";
+      client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
+        var topic = e.Topic;
+        if (!topic.StartsWith(filter)) return;
+
+        var rid = topic.Split("=")[1];
+
+        try {
+          var args = JsonSerializer.Deserialize<object>(e.Message);
+          R result = callback(args);
+          var json = JsonSerializer.Serialize(result);
+          client.Publish($"$iothub/methods/res/200/?$rid={rid}", Encoding.UTF8.GetBytes(json));
+        } catch (Exception error) {
+          client.Publish($"$iothub/methods/res/500/?$rid={rid}", Encoding.UTF8.GetBytes(error.Message));
+        }
+      };
     }
 
     private string CustomMethod(string name, string value) {
@@ -133,21 +166,6 @@ namespace GridOS
     {
       var topic = e.Topic;
       var message = Encoding.UTF8.GetString(e.Message);
-
-      if (topic.StartsWith($"$iothub/{DeviceId}/{ModuleId}/methods/POST/"))
-      {
-        var rid = topic.Split('=')[1];
-        Console.WriteLine($"rid={rid}");
-
-        var result = CustomMethod(topic.Split("/")[2], message);
-
-        var respTopic = $"$iothub/methods/res/200/{rid}";
-        Console.WriteLine($"res to {respTopic}\n\t{result}");
-
-        var client = sender as MqttClient;
-        client.Publish(respTopic, Encoding.UTF8.GetBytes(result));
-      }
-
       Console.WriteLine($"Received:\n\t{topic}\n\t{message}");
     }
   }
