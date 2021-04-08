@@ -75,14 +75,11 @@ namespace GridOS
     public string GetModuleToken(int expiryInSeconds = 3600)
     { 
       var expiry = DateTimeOffset.Now.ToUnixTimeSeconds() + expiryInSeconds;
-      var resourceUri = $"{IotHubHostName}/devices/{DeviceId}/modules/{ModuleId}";
-      var stringToSign = WebUtility.UrlEncode(resourceUri) + "\n" + expiry;
-      var asBytes = Encoding.UTF8.GetBytes(stringToSign);
+      var resource = WebUtility.UrlEncode($"{IotHubHostName}/devices/{DeviceId}/modules/{ModuleId}");
+      var dataToSign = Encoding.UTF8.GetBytes($"{resource}\n{expiry}");
 
-      var signature = this.Sign(asBytes);
-      string token = String.Format(CultureInfo.InvariantCulture, "SharedAccessSignature sr={0}&sig={1}&se={2}", 
-          WebUtility.UrlEncode(resourceUri), WebUtility.UrlEncode(signature), expiry.ToString());          
-      return token;
+      var signature = WebUtility.UrlEncode(this.Sign(dataToSign)); 
+      return $"SharedAccessSignature sr={resource}&sig={signature}&se={expiry}";
     }
 
     public Boolean Connect()
