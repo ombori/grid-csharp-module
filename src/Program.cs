@@ -27,7 +27,7 @@ namespace GridCSharpModule
 
     async private Task Work() {
       var module = new GridOS.Module();
-      await module.Connect();
+      module.Connect();
 
       // Example of receiving a setting value
       var testSetting = module.GetSetting("test_setting");

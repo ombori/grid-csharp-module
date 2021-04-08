@@ -9,14 +9,12 @@ namespace GridOS
   using uPLibrary.Networking.M2Mqtt.Messages;
   using System.Threading.Tasks;
   using System.Text.Json;
-  using Microsoft.Azure.EventGridEdge.IotEdge;
   using System.Globalization;
   using System.Net;
   using System.Linq;
-  using System.Net.Http;
-  using System.Net.Http.Headers;
   using System.Text.Encodings.Web;
   using System.Threading;
+  using System.Net.Sockets;
 
   class Module {
     public MqttClient client = null;
@@ -26,11 +24,10 @@ namespace GridOS
     private string ModuleId = null;
     private string IotHubHostName = null;
 
-    private class SignRequest
-    {
-      public string keyId { get; set; }
+    private class SignRequest {
       public string algo { get; set; }
-      public byte[] data { get; set; }
+      public string keyId { get; set; }
+      public string data { get; set; }
     }
 
     private class SignResponse
@@ -38,78 +35,67 @@ namespace GridOS
       public byte[] digest { get; set; }
     }
 
-    HttpClient httpClient;
-
-    private async Task<SignResponse> SignAsync(byte[] data, CancellationToken token = default)
+    private string Sign(string data, CancellationToken token = default)
     {
-      var IotHubName = this.IotHubHostName.Split('.').FirstOrDefault();
-      var workloadUri = new Uri(workloadUriString);
+      var genId = UrlEncoder.Default.Encode(Environment.GetEnvironmentVariable("IOTEDGE_MODULEGENERATIONID"));
+      var apiVer = UrlEncoder.Default.Encode(Environment.GetEnvironmentVariable("IOTEDGE_APIVERSION"));
+      var workload = Environment.GetEnvironmentVariable("IOTEDGE_WORKLOADURI");
 
-      string baseUrlForRequests = $"http://{workloadUri.Segments.Last()}";
-      this.httpClient = new HttpClient(new HttpUdsMessageHandler(workloadUri));
+      string module = UrlEncoder.Default.Encode(ModuleId);
+      var host = workload.Split('/').Last();
 
-      this.httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+      var reqData = new SignRequest() {algo = "HMACSHA256", keyId = "primary", data = data};
+      var payload = JsonSerializer.Serialize(reqData);
+      var req = 
+        $"POST http://{host}/modules/{module}/genid/{genId}/sign?api-version={apiVer} HTTP/1.1\r\n" +
+        $"Content-Type: application/json\r\n" +
+        $"Content-Length: {payload.Length}\r\n" + 
+        $"\r\n" + 
+        payload;
 
-      string encodedApiVersion = UrlEncoder.Default.Encode(this.workloadApiVersion);
-      string encodedModuleId = UrlEncoder.Default.Encode(this.ModuleId);
-      string encodedModuleGenerationId = UrlEncoder.Default.Encode(this.moduleGenerationId);
+      var sock = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
+      sock.Connect(new UnixDomainSocketEndPoint(workload.Split("://").Last()));
 
-      var uri = new Uri($"{baseUrlForRequests}/modules/{encodedModuleId}/genid/{encodedModuleGenerationId}/sign?api-version={encodedApiVersion}");
+      sock.Send(Encoding.ASCII.GetBytes(req));
 
-      var request = new SignRequest
-      {
-          algo = "HMACSHA256",
-          data = data,
-          keyId = "primary"
-      };
+      byte[] buf = new byte[4096];
+      sock.Receive(buf);
+      sock.Close();
 
-      string requestString = JsonSerializer.Serialize(request);
-      using (var content = new StringContent(requestString, Encoding.UTF8, "application/json"))
-      using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri) { Content = content })
-      using (HttpResponseMessage httpResponse = await this.httpClient.SendAsync(httpRequest, token))
-      {
-        string responsePayload = await httpResponse.Content.ReadAsStringAsync();
-        if (httpResponse.StatusCode == HttpStatusCode.OK)
-        {
-          SignResponse signResponse = JsonSerializer.Deserialize<SignResponse>(responsePayload);
-          return signResponse;
-        }
+      var lines = Encoding.ASCII.GetString(buf).Trim().Split("\n");
+      Console.WriteLine(req);
+      Console.WriteLine(Encoding.ASCII.GetString(buf));
+      Console.WriteLine(lines.First());
+      Console.WriteLine(lines.Last());
 
-        throw new InvalidOperationException($"Failed to execute sign request from IoTEdge security daemon. StatusCode={httpResponse.StatusCode} ReasonPhrase='{httpResponse.ReasonPhrase}' ResponsePayload='{responsePayload}' Request={requestString} This={this}");
-      }
+      if(lines.First().Trim() != "HTTP/1.1 200 OK") throw new Exception("Cannot sign");
+
+      var res = JsonSerializer.Deserialize<SignResponse>(Encoding.ASCII.GetBytes(lines.Last().Trim('\0')));
+
+      return Convert.ToBase64String(res.digest);
     }
 
-    public async Task<string> GetModuleToken(int expiryInSeconds = 3600)
+    public string GetModuleToken(int expiryInSeconds = 3600)
     { 
       TimeSpan fromEpochStart = DateTime.UtcNow - new DateTime(1970, 1, 1);
       string expiry = Convert.ToString((int)fromEpochStart.TotalSeconds + expiryInSeconds);
       string resourceUri = $"{IotHubHostName}/devices/{DeviceId}/modules/{ModuleId}";
-      string stringToSign = WebUtility.UrlEncode(resourceUri) + "\n" + expiry;
-      var signResponse = await this.SignAsync(Encoding.UTF8.GetBytes(stringToSign));
-      var signature = Convert.ToBase64String(signResponse.digest);
+      string stringToSign = "gridadminhubazuredevices.net"; // WebUtility.UrlEncode(resourceUri) + "\n" + expiry;
+
+      var signature = this.Sign(stringToSign);
       string token = String.Format(CultureInfo.InvariantCulture, "SharedAccessSignature sr={0}&sig={1}&se={2}", 
           WebUtility.UrlEncode(resourceUri), WebUtility.UrlEncode(signature), expiry);          
       return token;
     }
 
-    private string moduleGenerationId;
-    private string edgeGatewayHostName;
-    private string workloadApiVersion;
-    private string workloadUriString;
-
-    public async Task<Boolean> Connect()
+    public Boolean Connect()
     {
       var hostname = System.Environment.GetEnvironmentVariable("IOTEDGE_GATEWAYHOSTNAME");
       DeviceId = System.Environment.GetEnvironmentVariable("IOTEDGE_DEVICEID");
       ModuleId = System.Environment.GetEnvironmentVariable("IOTEDGE_MODULEID");
       IotHubHostName = System.Environment.GetEnvironmentVariable("IOTEDGE_IOTHUBHOSTNAME");
 
-      moduleGenerationId = Environment.GetEnvironmentVariable("IOTEDGE_MODULEGENERATIONID");
-      edgeGatewayHostName = Environment.GetEnvironmentVariable("IOTEDGE_GATEWAYHOSTNAME");
-      workloadApiVersion = Environment.GetEnvironmentVariable("IOTEDGE_APIVERSION");
-      workloadUriString = Environment.GetEnvironmentVariable("IOTEDGE_WORKLOADURI");
-
-      string password = await GetModuleToken(3600);
+      string password = GetModuleToken(3600);
 
       client = new MqttClient(hostname);
       client.ProtocolVersion = MqttProtocolVersion.Version_3_1_1;
