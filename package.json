@@ -1,6 +1,6 @@
 {
   "name": "lexa.grid-csharp-module",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "C# Module Example",
   "container-registry": "omborigridregistry.azurecr.io",
   "license": "UNLICENSED",
