@@ -16,13 +16,15 @@ namespace GridOS
   using System.Threading;
   using System.Net.Sockets;
 
-  class Module {
+  class Module<S> {
     public MqttClient client = null;
     private int rid = 1000;
 
     private string DeviceId = null;
     private string ModuleId = null;
     private string IotHubHostName = null;
+
+    public S settings;
 
     private class SignRequest {
       public string algo { get; set; }
@@ -82,7 +84,7 @@ namespace GridOS
       return $"SharedAccessSignature sr={resource}&sig={signature}&se={expiry}";
     }
 
-    public Boolean Connect()
+    public async Task<Boolean> Connect()
     {
       var hostname = System.Environment.GetEnvironmentVariable("IOTEDGE_GATEWAYHOSTNAME");
       DeviceId = System.Environment.GetEnvironmentVariable("IOTEDGE_DEVICEID");
@@ -117,25 +119,45 @@ namespace GridOS
         new[] { "$iothub/methods/POST/#" },
         new[] { (byte)1 });   
 
+      // Twin updates
+      client.Subscribe(
+        new[] {"$iothub/twin/PATCH/properties/desired/#" },
+        new[] { (byte)1 });
+
       // Grid local bradcasts
       client.Subscribe(
         new[] {"ombori/grid/message/#" },
         new[] { (byte)1 });
 
+      this.settings = await GetTwin();
+
       return true;
     }
 
-    public string GetSetting(string name) {
-      return System.Environment.GetEnvironmentVariable($"{ModuleId}_{name}".ToUpper());
+    public void onSettings(Action<S> callback) {
+      var filter = $"$iothub/twin/PATCH/properties/desired/?$version=";
+      client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
+        var topic = e.Topic;
+        if (!topic.StartsWith(filter)) return;
+
+        //var version = topic.Split("=")[1];
+
+        var args = JsonSerializer.Deserialize<S>(e.Message);
+        callback(args);
+      };
     }
 
-    public Task<object> GetTwin() {
+    internal class TwinData {
+      public S desired {get; set;}
+    };
+
+    public Task<S> GetTwin() {
       if (client == null) throw new Exception("Client not initialized");
 
       var id = rid.ToString();
       rid+=1;
 
-      var result = new TaskCompletionSource<object>();
+      var result = new TaskCompletionSource<S>();
       var filter = $"$iothub/twin/res/";
 
       client.MqttMsgPublishReceived += (object sender, MqttMsgPublishEventArgs e) => {
@@ -148,7 +170,7 @@ namespace GridOS
         var code = topic.Split("/")[3];
         if (code != "200") throw new Exception($"Cannot fetch twin, code={code}");
 
-        result.SetResult(JsonSerializer.Deserialize<object>(e.Message));
+        result.SetResult(JsonSerializer.Deserialize<TwinData>(e.Message).desired);
 
         // TODO: remove handler
         // client.MqttMsgPublishReceived -= eventHandler;

@@ -20,22 +20,26 @@ namespace GridCSharpModule
       WhenCancelled(cts.Token).Wait();
     }
 
+    private class Settings {
+      public string testSetting {set; get;}
+    }
+
     private class HelloEvent {
       public string Hello {set; get;}
       public int Id {set; get;}
     };
 
     async private Task Work() {
-      var module = new GridOS.Module();
-      module.Connect();
+      var module = new GridOS.Module<Settings>();
+      await module.Connect();
 
-      // Example of receiving a setting value
-      var testSetting = module.GetSetting("test_setting");
-      Console.WriteLine($"test_setting value {testSetting}");
+      // Example of receiving initial setting value
+      Console.WriteLine($"testSetting value: {module.settings.testSetting}");
 
-      // Example of receiving a twin
-      var twin = await module.GetTwin();
-      Console.WriteLine($"received twin {twin}");
+      // Example of receiving setting update
+      module.onSettings((Settings data) => {
+        Console.WriteLine($"testSetting updated: {data.testSetting}");
+      });
 
       // Example of a module method
       module.OnMethod<string>("hello", (object args) => {
