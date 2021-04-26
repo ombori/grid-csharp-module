@@ -6,6 +6,8 @@ namespace GridCSharpModule
   using System.Threading.Tasks;
   using System.Text;
 
+  using Ombori.Grid;
+
   class Program
   {
     static void Main(string[] args)
@@ -30,14 +32,14 @@ namespace GridCSharpModule
     };
 
     async private Task Work() {
-      var module = new GridOS.Module<Settings>();
+      var module = new Module<Settings>();
       await module.Connect();
 
       // Example of receiving initial setting value
       Console.WriteLine($"testSetting value: {module.settings.testSetting}");
 
       // Example of receiving setting update
-      module.onSettings((Settings data) => {
+      module.OnSettings((Settings data) => {
         Console.WriteLine($"testSetting updated: {data.testSetting}");
       });
 
@@ -48,8 +50,8 @@ namespace GridCSharpModule
       });
 
       // Example of receiving a message
-      module.OnEvent("Test.Event", (object data, string type) => {
-        Console.WriteLine($"Event received {type}: {data}");
+      module.OnEvent<HelloEvent>("Test.Event", (data, type) => {
+        Console.WriteLine($"Event received {type}: hello={data.Hello} id={data.Id}");
       });
 
       // Example of broadcasting a message 
@@ -62,13 +64,17 @@ namespace GridCSharpModule
         {
           await Task.Delay(1000);
           e.Id = i;
-          module.Broadcast("Test.Event", e);
+          try {
+            await module.Broadcast("Test.Event", e);
+          } catch {
+            Console.WriteLine("Cannot broadcast");
+          }
           i+=1;
         }
       });
 
       // Example of subscribing to an MQTT topic
-      module.Subscribe("public/test123", (byte[] message, string topic) => {
+      await module.Subscribe("public/test123", (byte[] message, string topic) => {
         var data = Encoding.UTF8.GetString(message);
         Console.WriteLine($"Incoming message on {topic}: {data}");
       });
@@ -79,7 +85,11 @@ namespace GridCSharpModule
         for(;;)
         {
           await Task.Delay(1000);
-          module.Publish("public/test123", Encoding.UTF8.GetBytes($"Hello {i}"));
+          try {
+            await module.Publish("public/test123", Encoding.UTF8.GetBytes($"Hello {i}"));
+          } catch {
+            Console.WriteLine("Cannot publish");
+          }
           i+=1;
         }
       });
