@@ -13,6 +13,9 @@
   },
   "scripts": {
     "schema": "mkdir -p build && npx ts-schema schema.ts build/",
-    "build": "yarn schema && omg module build"
+    "build": "yarn schema && omg module build",
+    "deploy": "omg module deploy",
+    "deploy-watch": "omg module deploy -w",
+    "pub": "omg module publish"
   }
 }
