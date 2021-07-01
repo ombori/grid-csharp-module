@@ -4,7 +4,6 @@ namespace GridCSharpModule
   using System.Runtime.Loader;
   using System.Threading;
   using System.Threading.Tasks;
-  using System.Text;
 
   using Ombori.Grid;
 
@@ -50,7 +49,7 @@ namespace GridCSharpModule
       });
 
       // Example of receiving a message
-      module.OnEvent<HelloEvent>("Test.Event", (data, type) => {
+      module.Subscribe<HelloEvent>("Test.Event", (data, type) => {
         Console.WriteLine($"Event received {type}: hello={data.Hello} id={data.Id}");
       });
 
@@ -65,30 +64,9 @@ namespace GridCSharpModule
           await Task.Delay(1000);
           e.Id = i;
           try {
-            await module.Broadcast("Test.Event", e);
+            await module.Publish("Test.Event", e);
           } catch {
             Console.WriteLine("Cannot broadcast");
-          }
-          i+=1;
-        }
-      });
-
-      // Example of subscribing to an MQTT topic
-      await module.Subscribe("public/test123", (byte[] message, string topic) => {
-        var data = Encoding.UTF8.GetString(message);
-        Console.WriteLine($"Incoming message on {topic}: {data}");
-      });
-
-      // Example of writing to an MQTT topic
-      var publishTask = Task.Run(async () => {
-        int i = 0;
-        for(;;)
-        {
-          await Task.Delay(1000);
-          try {
-            await module.Publish("public/test123", Encoding.UTF8.GetBytes($"Hello {i}"));
-          } catch {
-            Console.WriteLine("Cannot publish");
           }
           i+=1;
         }
